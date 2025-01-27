@@ -1,4 +1,6 @@
 # ofxmerge
+ 
+**Don't use -- status is still experimental.**
 
 `ofxmerge` is a small tool that merges 2 or more OFX files.
 
@@ -12,4 +14,3 @@ To merge with output of new OFX file being sent to standard out:
 $ ./ofxmerge file1.ofx file2.ofx
 ```
 
-Status is experimental.
