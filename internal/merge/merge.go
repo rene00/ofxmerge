@@ -74,32 +74,53 @@ func (o *OFXMerger) Add(b []byte) error {
 
 	switch o.ofxFiles.statementType {
 	case statementTypeBank:
-		if stmt, ok := resp.Bank[0].(*ofxgo.StatementResponse); ok {
-			o.ofxFiles.currSymbol = stmt.CurDef
-			if o.ofxFiles.bankAccount != nil {
-				if !bankAccountsMatch(*o.ofxFiles.bankAccount, stmt.BankAcctFrom) {
-					return fmt.Errorf("bank accounts do not match")
-				}
-			} else {
-				o.ofxFiles.bankAccount = &stmt.BankAcctFrom
+		stmt, ok := resp.Bank[0].(*ofxgo.StatementResponse)
+		if !ok {
+			return fmt.Errorf("failed to process bank statement")
+		}
+		o.ofxFiles.currSymbol = stmt.CurDef
+		if o.ofxFiles.bankAccount != nil {
+			if !bankAccountsMatch(*o.ofxFiles.bankAccount, stmt.BankAcctFrom) {
+				return fmt.Errorf("bank accounts do not match")
 			}
+		} else {
+			o.ofxFiles.bankAccount = &stmt.BankAcctFrom
 		}
 	case statementTypeCreditCard:
-		if stmt, ok := resp.CreditCard[0].(*ofxgo.CCStatementResponse); ok {
-			o.ofxFiles.currSymbol = stmt.CurDef
+		stmt, ok := resp.CreditCard[0].(*ofxgo.CCStatementResponse)
+		if !ok {
+			return fmt.Errorf("failed to process credit card statement")
+		}
+		o.ofxFiles.currSymbol = stmt.CurDef
 
-			if o.ofxFiles.ccAccount != nil {
-				if !ccAccountsMatch(*o.ofxFiles.ccAccount, stmt.CCAcctFrom) {
-					return fmt.Errorf("credit card accounts do not match")
-				}
-			} else {
-				o.ofxFiles.ccAccount = &stmt.CCAcctFrom
+		if o.ofxFiles.ccAccount != nil {
+			if !ccAccountsMatch(*o.ofxFiles.ccAccount, stmt.CCAcctFrom) {
+				return fmt.Errorf("credit card accounts do not match")
 			}
+		} else {
+			o.ofxFiles.ccAccount = &stmt.CCAcctFrom
 		}
 	}
 
 	o.ofxFiles.files = append(o.ofxFiles.files, ofxFile)
 	return nil
+}
+
+func newCCStatementResponse() (ofxgo.CCStatementResponse, error) {
+	var err error
+	var resp ofxgo.CCStatementResponse
+	resp.Status = ofxgo.Status{
+		Code:     ofxgo.Int(0),
+		Severity: ofxgo.String("INFO"),
+	}
+
+	trnUID, err := ofxgo.RandomUID()
+	if err != nil {
+		return resp, err
+	}
+	resp.TrnUID = *trnUID
+
+	return resp, nil
 }
 
 func newStatementResponse() (ofxgo.StatementResponse, error) {
@@ -120,13 +141,50 @@ func newStatementResponse() (ofxgo.StatementResponse, error) {
 }
 
 func (o *OFXMerger) Merge() ([]byte, error) {
-	var buf *bytes.Buffer
+	buf := new(bytes.Buffer)
 
 	switch o.ofxFiles.statementType {
+	case statementTypeCreditCard:
+		stmt, err := newCCStatementResponse()
+		if err != nil {
+			return []byte{}, err
+		}
+		stmt.CurDef = o.ofxFiles.currSymbol
+		stmt.DtAsOf = o.ofxFiles.dtAsOf()
+		stmt.CCAcctFrom = *o.ofxFiles.ccAccount
+		stmt.BankTranList = &ofxgo.TransactionList{
+			Transactions: []ofxgo.Transaction{},
+			DtEnd:        o.ofxFiles.dtEnd(),
+			DtStart:      o.ofxFiles.dtStart(),
+		}
+		for _, ofxFile := range o.ofxFiles.files {
+			ofxFileStmt, ok := ofxFile.resp.CreditCard[0].(*ofxgo.CCStatementResponse)
+			if !ok {
+				return []byte{}, fmt.Errorf("unable to process credit card statement")
+			}
+			for _, i := range ofxFileStmt.BankTranList.Transactions {
+				stmt.BankTranList.Transactions = append(stmt.BankTranList.Transactions, i)
+			}
+		}
+
+		resp := ofxgo.Response{
+			CreditCard: []ofxgo.Message{&stmt},
+			Signon: ofxgo.SignonResponse{
+				Language: ofxgo.String("ENG"),
+				Status: ofxgo.Status{
+					Code:     ofxgo.Int(0),
+					Severity: ofxgo.String("INFO"),
+				},
+			},
+		}
+		buf, err = resp.Marshal()
+		if err != nil {
+			return []byte{}, err
+		}
 	case statementTypeBank:
 		stmt, err := newStatementResponse()
 		if err != nil {
-			return buf.Bytes(), err
+			return []byte{}, err
 		}
 
 		stmt.CurDef = o.ofxFiles.currSymbol
@@ -140,7 +198,7 @@ func (o *OFXMerger) Merge() ([]byte, error) {
 		for _, ofxFile := range o.ofxFiles.files {
 			ofxFileStmt, ok := ofxFile.resp.Bank[0].(*ofxgo.StatementResponse)
 			if !ok {
-				return buf.Bytes(), fmt.Errorf("unable to process bank statement")
+				return []byte{}, fmt.Errorf("unable to process bank statement")
 			}
 			for _, i := range ofxFileStmt.BankTranList.Transactions {
 				stmt.BankTranList.Transactions = append(stmt.BankTranList.Transactions, i)
@@ -159,9 +217,8 @@ func (o *OFXMerger) Merge() ([]byte, error) {
 
 		buf, err = resp.Marshal()
 		if err != nil {
-			return buf.Bytes(), err
+			return []byte{}, err
 		}
-		return buf.Bytes(), nil
 	default:
 	}
 
