@@ -169,13 +169,7 @@ func (o *OFXMerger) Merge() ([]byte, error) {
 
 		resp := ofxgo.Response{
 			CreditCard: []ofxgo.Message{&stmt},
-			Signon: ofxgo.SignonResponse{
-				Language: ofxgo.String("ENG"),
-				Status: ofxgo.Status{
-					Code:     ofxgo.Int(0),
-					Severity: ofxgo.String("INFO"),
-				},
-			},
+			Signon:     o.ofxFiles.signonResponse(),
 		}
 		buf, err = resp.Marshal()
 		if err != nil {
@@ -205,14 +199,8 @@ func (o *OFXMerger) Merge() ([]byte, error) {
 			}
 		}
 		resp := ofxgo.Response{
-			Bank: []ofxgo.Message{&stmt},
-			Signon: ofxgo.SignonResponse{
-				Language: ofxgo.String("ENG"),
-				Status: ofxgo.Status{
-					Code:     ofxgo.Int(0),
-					Severity: ofxgo.String("INFO"),
-				},
-			},
+			Bank:   []ofxgo.Message{&stmt},
+			Signon: o.ofxFiles.signonResponse(),
 		}
 
 		buf, err = resp.Marshal()

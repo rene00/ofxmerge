@@ -32,9 +32,44 @@ func (o ofxFiles) validate(resp *ofxgo.Response) error {
 	return nil
 }
 
+func (o ofxFiles) signonResponse() ofxgo.SignonResponse {
+	s := ofxgo.SignonResponse{
+		Language: ofxgo.String("ENG"),
+		Status: ofxgo.Status{
+			Code:     ofxgo.Int(0),
+			Severity: ofxgo.String("INFO"),
+		},
+	}
+
+	dtServer := ofxgo.Date{}
+	for _, ofxFile := range o.files {
+		if ofxFile.resp == nil {
+			continue
+		}
+		if dtServer.Time.IsZero() {
+			dtServer = ofxFile.resp.Signon.DtServer
+			continue
+		}
+		if ofxFile.resp.Signon.DtServer.Time.After(dtServer.Time) {
+			dtServer = ofxFile.resp.Signon.DtServer
+			continue
+		}
+	}
+	if dtServer.Time.IsZero() {
+		dtServer.Time = time.Now()
+	}
+
+	s.DtServer = dtServer
+
+	return s
+}
+
 func (o ofxFiles) dtAsOf() ofxgo.Date {
 	d := ofxgo.Date{}
 	for _, ofxFile := range o.files {
+		if ofxFile.resp == nil {
+			continue
+		}
 		switch o.statementType {
 		case statementTypeBank:
 			if len(ofxFile.resp.Bank) == 0 {
