@@ -32,6 +32,9 @@ func (o ofxFiles) validate(resp *ofxgo.Response) error {
 	return nil
 }
 
+// signonResponse ranges through ofxFiles returning the latest signonResponse.
+// If no signonResponse is found or the dtServer timestamp is not set within
+// the signonResponses, a default signonResponse is returned.
 func (o ofxFiles) signonResponse() ofxgo.SignonResponse {
 	s := ofxgo.SignonResponse{
 		Language: ofxgo.String("ENG"),
@@ -47,19 +50,13 @@ func (o ofxFiles) signonResponse() ofxgo.SignonResponse {
 			continue
 		}
 		if dtServer.Time.IsZero() {
-			dtServer = ofxFile.resp.Signon.DtServer
-			continue
+			s = ofxFile.resp.Signon
 		}
 		if ofxFile.resp.Signon.DtServer.Time.After(dtServer.Time) {
-			dtServer = ofxFile.resp.Signon.DtServer
+			s = ofxFile.resp.Signon
 			continue
 		}
 	}
-	if dtServer.Time.IsZero() {
-		dtServer.Time = time.Now()
-	}
-
-	s.DtServer = dtServer
 
 	return s
 }
