@@ -20,6 +20,8 @@ type OFXMerger struct {
 	ofxFiles ofxFiles
 }
 
+// ccMatch compares ofxgo.CCAcct c1 and c2 returning true if both accounts are
+// the same and false if they are different.
 func ccAccountsMatch(c1, c2 ofxgo.CCAcct) bool {
 	if c1.AcctID != c2.AcctID {
 		return false
@@ -32,6 +34,8 @@ func ccAccountsMatch(c1, c2 ofxgo.CCAcct) bool {
 
 }
 
+// bankAccountMatch compares ofxgo.BankAcct b1 and b2 returning true if both
+// accounts are the same and false if they are different.
 func bankAccountsMatch(b1, b2 ofxgo.BankAcct) bool {
 	if b1.BankID != b2.BankID {
 		return false
@@ -143,6 +147,7 @@ func newStatementResponse() (ofxgo.StatementResponse, error) {
 func (o *OFXMerger) Merge() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
+	ts := NewTransactionSet()
 	switch o.ofxFiles.statementType {
 	case statementTypeCreditCard:
 		stmt, err := newCCStatementResponse()
@@ -157,12 +162,16 @@ func (o *OFXMerger) Merge() ([]byte, error) {
 			DtEnd:        o.ofxFiles.dtEnd(),
 			DtStart:      o.ofxFiles.dtStart(),
 		}
-		for _, ofxFile := range o.ofxFiles.files {
+
+		for idx, ofxFile := range o.ofxFiles.files {
 			ofxFileStmt, ok := ofxFile.resp.CreditCard[0].(*ofxgo.CCStatementResponse)
 			if !ok {
 				return []byte{}, fmt.Errorf("unable to process credit card statement")
 			}
 			for _, i := range ofxFileStmt.BankTranList.Transactions {
+				if ts.isDuplicate(idx, i) {
+					continue
+				}
 				stmt.BankTranList.Transactions = append(stmt.BankTranList.Transactions, i)
 			}
 		}
@@ -189,12 +198,15 @@ func (o *OFXMerger) Merge() ([]byte, error) {
 			DtEnd:        o.ofxFiles.dtEnd(),
 			DtStart:      o.ofxFiles.dtStart(),
 		}
-		for _, ofxFile := range o.ofxFiles.files {
+		for idx, ofxFile := range o.ofxFiles.files {
 			ofxFileStmt, ok := ofxFile.resp.Bank[0].(*ofxgo.StatementResponse)
 			if !ok {
 				return []byte{}, fmt.Errorf("unable to process bank statement")
 			}
 			for _, i := range ofxFileStmt.BankTranList.Transactions {
+				if ts.isDuplicate(idx, i) {
+					continue
+				}
 				stmt.BankTranList.Transactions = append(stmt.BankTranList.Transactions, i)
 			}
 		}
